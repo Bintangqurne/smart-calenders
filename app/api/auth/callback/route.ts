@@ -26,26 +26,61 @@ export async function GET(request: Request) {
 
     const data = await res.json();
     const token = data.data?.accessToken || data.accessToken;
+    const accessTokenExpiresAt =
+      data.data?.accessTokenExpiresAt || data.accessTokenExpiresAt;
     const userId = data.data?.userId || data.userId;
+    const userName = data.data?.name || data.name || "";
+    const userEmail = data.data?.email || data.email || "";
 
     if (!token) {
       return NextResponse.redirect(new URL("/login?error=MissingToken", request.url));
     }
 
-    // Set cookie
+    const expiresAt = accessTokenExpiresAt
+      ? new Date(accessTokenExpiresAt)
+      : new Date(Date.now() + 60 * 60 * 1000);
+    const safeExpiresAt =
+      Number.isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()
+        ? new Date(Date.now() + 60 * 60 * 1000)
+        : expiresAt;
+
+    // Set cookies
     const cookieStore = await cookies();
     cookieStore.set("auth_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      expires: safeExpiresAt,
+      path: "/",
+    });
+    cookieStore.set("session_user_id", userId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      expires: safeExpiresAt,
+      path: "/",
+    });
+    cookieStore.set("session_user_email", userEmail, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      expires: safeExpiresAt,
       path: "/",
     });
     cookieStore.set("user_id", userId, {
+      expires: safeExpiresAt,
+      path: "/",
+    });
+    cookieStore.set("user_name", userName, {
+      expires: safeExpiresAt,
+      path: "/",
+    });
+    cookieStore.set("user_email", userEmail, {
+      expires: safeExpiresAt,
       path: "/",
     });
 
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/post-login", request.url));
   } catch (error) {
     console.error("Callback error:", error);
     return NextResponse.redirect(new URL("/login?error=ServerError", request.url));
