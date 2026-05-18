@@ -480,3 +480,444 @@ export async function uploadFileToS3(
   });
   if (!res.ok) throw new Error(`S3 upload failed: HTTP ${res.status}`);
 }
+
+// ─── Chat (F1) ───────────────────────────────────────────────────
+
+export type ConversationType =
+  | "dm"
+  | "channel"
+  | "task_thread"
+  | "meeting_thread"
+  | "file_thread";
+
+export interface Conversation {
+  conversationId: string;
+  type: ConversationType;
+  scopeKey: string;
+  scopeId: string;
+  teamId?: string | null;
+  memberIds: string[];
+  lastMessageAt: string;
+  lastMessagePreview: string;
+  createdBy: string;
+  createdAt: string;
+  unreadCount?: number;
+  muted?: boolean;
+  lastReadMessageId?: string | null;
+}
+
+export interface Message {
+  conversationId: string;
+  sk: string;
+  messageId: string;
+  senderId: string;
+  senderEmail?: string;
+  body: string;
+  attachments: unknown[];
+  mentions: string[];
+  parentMessageId: string | null;
+  reactions: Record<string, string[]>;
+  clientMsgId: string;
+  createdAt: string;
+  editedAt?: string;
+  deletedAt?: string;
+}
+
+export function createDm(otherUserId: string): Promise<Conversation> {
+  return apiFetch<Conversation>("/conversations/dm", {
+    method: "POST",
+    body: JSON.stringify({ otherUserId }),
+  });
+}
+
+export function listConversations(): Promise<{ conversations: Conversation[] }> {
+  return apiFetch("/conversations");
+}
+
+export function getOrCreateThread(
+  scopeType: "task" | "meeting" | "file",
+  scopeId: string
+): Promise<Conversation> {
+  return apiFetch<Conversation>(
+    `/conversations/thread/${scopeType}/${scopeId}`,
+    { method: "POST" }
+  );
+}
+
+export function sendMessage(
+  conversationId: string,
+  payload: {
+    body: string;
+    clientMsgId: string;
+    parentMessageId?: string | null;
+    attachments?: unknown[];
+  }
+): Promise<Message> {
+  return apiFetch<Message>(`/conversations/${conversationId}/messages`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listMessages(
+  conversationId: string,
+  opts?: { before?: string; since?: string; limit?: number }
+): Promise<{ messages: Message[]; hasMore: boolean }> {
+  const q = new URLSearchParams();
+  if (opts?.before) q.set("before", opts.before);
+  if (opts?.since) q.set("since", opts.since);
+  if (opts?.limit) q.set("limit", String(opts.limit));
+  const qs = q.toString();
+  return apiFetch(
+    `/conversations/${conversationId}/messages${qs ? `?${qs}` : ""}`
+  );
+}
+
+export function reactToMessage(
+  conversationId: string,
+  messageId: string,
+  emoji: string,
+  action: "add" | "remove" = "add"
+): Promise<{ reactions: Record<string, string[]> }> {
+  return apiFetch(
+    `/conversations/${conversationId}/messages/${messageId}/reactions`,
+    { method: "POST", body: JSON.stringify({ emoji, action }) }
+  );
+}
+
+export function editMessage(
+  conversationId: string,
+  messageId: string,
+  body: string
+): Promise<{ messageId: string; body: string; editedAt: string }> {
+  return apiFetch(`/conversations/${conversationId}/messages/${messageId}`, {
+    method: "PUT",
+    body: JSON.stringify({ body }),
+  });
+}
+
+export function deleteMessage(
+  conversationId: string,
+  messageId: string
+): Promise<void> {
+  return apiFetch<void>(
+    `/conversations/${conversationId}/messages/${messageId}`,
+    { method: "DELETE" }
+  );
+}
+
+export function markConversationRead(
+  conversationId: string,
+  lastReadMessageId: string
+): Promise<{ ok: boolean }> {
+  return apiFetch(`/conversations/${conversationId}/read`, {
+    method: "POST",
+    body: JSON.stringify({ lastReadMessageId }),
+  });
+}
+
+export function createChannel(payload: {
+  teamId: string;
+  name: string;
+  description?: string;
+}): Promise<Conversation> {
+  return apiFetch<Conversation>("/conversations/channel", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+// ─── Notifications (F3) ──────────────────────────────────────────
+
+export type NotificationType =
+  | "mention"
+  | "reply"
+  | "reaction"
+  | "task_assigned"
+  | "meeting_invite"
+  | "file_share";
+
+export interface Notification {
+  userId: string;
+  sk: string;
+  notificationId: string;
+  type: NotificationType;
+  sourceType: string;
+  sourceId: string;
+  teamId?: string;
+  conversationId?: string;
+  title: string;
+  body: string;
+  read: boolean;
+  unreadKey?: string;
+  createdAt: string;
+}
+
+export function listNotifications(opts?: {
+  limit?: number;
+  unreadOnly?: boolean;
+}): Promise<{ notifications: Notification[]; unreadCount: number }> {
+  const q = new URLSearchParams();
+  if (opts?.limit) q.set("limit", String(opts.limit));
+  if (opts?.unreadOnly) q.set("unread", "true");
+  const qs = q.toString();
+  return apiFetch(`/notifications${qs ? `?${qs}` : ""}`);
+}
+
+export function markNotificationRead(sk: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/notifications/${encodeURIComponent(sk)}/read`, {
+    method: "POST",
+  });
+}
+
+export function markAllNotificationsRead(): Promise<{
+  ok: boolean;
+  updated: number;
+}> {
+  return apiFetch(`/notifications/read-all`, { method: "POST" });
+}
+
+// ─── File Collab (F2) ────────────────────────────────────────────
+
+export interface FileVersion {
+  fileId: string;
+  sk: string;
+  versionNumber: number;
+  s3Key: string;
+  fileSize: number;
+  fileType: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  comment: string;
+}
+
+export interface FilePreviewInfo {
+  previewUrl: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  version: number;
+  expiresIn: number;
+}
+
+export interface FileShareInfo {
+  shortCode: string;
+  expiresAt: string;
+  hasPassword: boolean;
+  permission: "view" | "download";
+  url: string;
+}
+
+export function getFilePreviewUrl(fileId: string): Promise<FilePreviewInfo> {
+  return apiFetch<FilePreviewInfo>(`/files/${fileId}/preview`);
+}
+
+export function listFileVersions(
+  fileId: string
+): Promise<{ versions: FileVersion[]; currentVersion: number }> {
+  return apiFetch(`/files/${fileId}/versions`);
+}
+
+export function createFileVersion(
+  fileId: string,
+  payload: { fileType: string; fileSize: number; comment?: string }
+): Promise<{
+  uploadUrl: string;
+  s3Key: string;
+  versionNumber: number;
+  expiresIn: number;
+}> {
+  return apiFetch(`/files/${fileId}/versions`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createFileShareLink(
+  fileId: string,
+  payload: {
+    expiresInSeconds?: number;
+    password?: string;
+    permission?: "view" | "download";
+    maxAccess?: number;
+  }
+): Promise<FileShareInfo> {
+  return apiFetch<FileShareInfo>(`/files/${fileId}/shares`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function revokeFileShareLink(shortCode: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/files/shares/${shortCode}`, { method: "DELETE" });
+}
+
+// ─── Templates (F7) ──────────────────────────────────────────────
+
+export type TemplateType = "task" | "meeting";
+
+export interface Template {
+  templateId: string;
+  sk: string;
+  scopeKey: string;
+  teamId: string | null;
+  templateType: TemplateType;
+  name: string;
+  description: string;
+  payload: Record<string, unknown>;
+  isPublic: boolean;
+  createdBy: string;
+  createdAt: string;
+}
+
+export function listTemplates(opts?: {
+  type?: TemplateType;
+  teamId?: string;
+}): Promise<{ templates: Template[] }> {
+  const q = new URLSearchParams();
+  if (opts?.type) q.set("type", opts.type);
+  if (opts?.teamId) q.set("teamId", opts.teamId);
+  const qs = q.toString();
+  return apiFetch(`/templates${qs ? `?${qs}` : ""}`);
+}
+
+export function createTemplate(payload: {
+  templateType: TemplateType;
+  name: string;
+  description?: string;
+  payload: Record<string, unknown>;
+  teamId?: string;
+  isPublic?: boolean;
+}): Promise<Template> {
+  return apiFetch<Template>("/templates", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteTemplate(templateId: string): Promise<void> {
+  return apiFetch<void>(`/templates/${templateId}`, { method: "DELETE" });
+}
+
+// ─── Guest Invites (F12) ─────────────────────────────────────────
+
+export type GuestScope = "meeting" | "file";
+
+export interface GuestInviteCreated {
+  shortCode: string;
+  expiresAt: string;
+  hasPassword: boolean;
+  scope: GuestScope;
+  url: string;
+}
+
+export function createGuestInvite(payload: {
+  scope: GuestScope;
+  scopeId: string;
+  expiresInSeconds?: number;
+  password?: string;
+  maxAccess?: number;
+}): Promise<GuestInviteCreated> {
+  return apiFetch<GuestInviteCreated>("/guest-invites", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function revokeGuestInvite(shortCode: string): Promise<{ ok: boolean }> {
+  return apiFetch(`/guest-invites/${shortCode}`, { method: "DELETE" });
+}
+
+// ─── Profile & Seasons (F9, F10) ─────────────────────────────────
+
+export interface Profile {
+  usernameLower: string;
+  username: string;
+  userId: string;
+  email?: string;
+  displayName: string;
+  bio: string;
+  profilePublic: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicProfile {
+  username: string;
+  displayName: string;
+  bio: string;
+  profilePublic: boolean;
+  stats: { points: number; completedTasks: number };
+  badges: { name: string; description: string; icon: string }[];
+  memberSince: string;
+}
+
+export interface GlobalLeaderboardEntry {
+  userId: string;
+  username: string | null;
+  displayName: string;
+  points: number;
+  rank: number;
+  badge: string | null;
+}
+
+export interface SeasonMetadata {
+  seasonId: string;
+  name: string;
+  startsAt: string;
+  endsAt: string;
+  status: string;
+  participantCount: number;
+}
+
+export interface SeasonScoreEntry {
+  seasonId: string;
+  userId: string;
+  rank: number;
+  points: number;
+  username: string | null;
+  displayName: string;
+}
+
+export function getMyProfile(): Promise<{ profile: Profile | null }> {
+  return apiFetch("/profile");
+}
+
+export function setProfile(payload: {
+  username: string;
+  bio?: string;
+  profilePublic?: boolean;
+  displayName?: string;
+}): Promise<Profile> {
+  return apiFetch<Profile>("/profile", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getPublicProfile(username: string): Promise<PublicProfile> {
+  const res = await fetch(
+    `/api/proxy-public/public/profile/${encodeURIComponent(username)}`
+  );
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  return (await res.json()) as PublicProfile;
+}
+
+export function getGlobalLeaderboard(): Promise<{
+  entries: GlobalLeaderboardEntry[];
+  totalParticipants: number;
+}> {
+  return apiFetch("/leaderboard/global");
+}
+
+export function listSeasons(seasonId?: string): Promise<{
+  seasons?: SeasonMetadata[];
+  seasonId?: string;
+  entries?: SeasonScoreEntry[];
+}> {
+  const qs = seasonId ? `?seasonId=${encodeURIComponent(seasonId)}` : "";
+  return apiFetch(`/seasons${qs}`);
+}

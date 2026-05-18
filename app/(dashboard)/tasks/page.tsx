@@ -35,6 +35,8 @@ import { Label } from "@/components/ui/label";
 import { TeamPageGuard } from "@/components/team-page-guard";
 import { useToast } from "@/components/toast-provider";
 import { useTeam } from "@/hooks/use-team";
+import { TemplatePicker } from "@/components/templates/TemplatePicker";
+import { SaveAsTemplate } from "@/components/templates/SaveAsTemplate";
 import {
   createTask,
   deleteTask,
@@ -513,6 +515,28 @@ function TaskForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+      {!isEdit && (
+        <div className="flex justify-end">
+          <TemplatePicker
+            type="task"
+            teamId={teamId}
+            onApply={(t) => {
+              const p = t.payload as {
+                title?: string;
+                description?: string;
+                assignedTo?: string;
+              };
+              setForm((prev) => ({
+                ...prev,
+                title: p.title ?? prev.title,
+                description: p.description ?? prev.description,
+                assignedTo: p.assignedTo ?? prev.assignedTo,
+              }));
+            }}
+          />
+        </div>
+      )}
+
       <div className="space-y-1.5">
         <Label htmlFor="task-title" className="text-xs font-medium">
           Title *
@@ -628,7 +652,21 @@ function TaskForm({
         </div>
       ) : null}
 
-      <div className="flex justify-end gap-2 pt-1">
+      <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+        {!isEdit && form.title.trim() && (
+          <div className="mr-auto">
+            <SaveAsTemplate
+              type="task"
+              teamId={teamId}
+              suggestedName={form.title.slice(0, 60)}
+              payload={{
+                title: form.title,
+                description: form.description,
+                assignedTo: form.assignedTo,
+              }}
+            />
+          </div>
+        )}
         <DialogClose render={<Button variant="outline" type="button" />}>
           Cancel
         </DialogClose>

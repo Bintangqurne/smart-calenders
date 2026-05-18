@@ -5,6 +5,7 @@ import {
   ChevronsUpDown,
   ClipboardList,
   FileText,
+  Inbox,
   LayoutDashboard,
   LogOut,
   Presentation,
@@ -51,6 +52,7 @@ import {
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb";
 import { TeamSwitcher } from "@/components/team-switcher";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 
 type NavItem = {
   label: string;
@@ -68,6 +70,7 @@ const navGroups: NavGroup[] = [
     title: "Main",
     items: [
       { label: "Dashboard", icon: LayoutDashboard, href: "/" },
+      { label: "Inbox", icon: Inbox, href: "/inbox" },
       { label: "Calendar", icon: CalendarDays, href: "/events" },
       { label: "Meetings", icon: Presentation, href: "/meetings" },
       { label: "Tasks", icon: ClipboardList, href: "/tasks" },
@@ -295,6 +298,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
+          <div className="ml-auto">
+            <NotificationBell />
+          </div>
         </header>
         <main className="flex flex-1 flex-col gap-4 p-4 md:p-6">
           {children}

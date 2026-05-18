@@ -2,6 +2,9 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppLayout } from "@/components/app-sidebar";
 import { TeamProvider } from "@/contexts/team-context";
+import { RealtimeProvider } from "@/contexts/realtime-context";
+import { NotificationsProvider } from "@/contexts/notifications-context";
+import { ChatDock } from "@/components/chat/ChatDock";
 
 export default async function DashboardLayout({
   children,
@@ -17,7 +20,12 @@ export default async function DashboardLayout({
 
   return (
     <TeamProvider>
-      <AppLayout>{children}</AppLayout>
+      <RealtimeProvider>
+        <NotificationsProvider>
+          <AppLayout>{children}</AppLayout>
+          <ChatDock />
+        </NotificationsProvider>
+      </RealtimeProvider>
     </TeamProvider>
   );
 }

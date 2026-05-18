@@ -16,9 +16,15 @@ import {
   Plus,
   Presentation,
   Sparkles,
+  UserPlus,
   Users,
+  Video,
   X,
 } from "lucide-react";
+import { JitsiEmbed } from "@/components/video/JitsiEmbed";
+import { TemplatePicker } from "@/components/templates/TemplatePicker";
+import { SaveAsTemplate } from "@/components/templates/SaveAsTemplate";
+import { GuestInviteModal } from "@/components/guest/GuestInviteModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -339,11 +345,15 @@ function MeetingCard({
   canManage,
   onEdit,
   onCancel,
+  onJoinSmartMeet,
+  onInviteGuest,
 }: {
   meeting: Meeting;
   canManage: boolean;
   onEdit: (meeting: Meeting) => void;
   onCancel: (meeting: Meeting) => void;
+  onJoinSmartMeet: (meeting: Meeting) => void;
+  onInviteGuest: (meeting: Meeting) => void;
 }) {
   const statusColor = getMeetingStatusColor(meeting.status);
   const [expanded, setExpanded] = useState(false);
@@ -425,18 +435,45 @@ function MeetingCard({
                   <p className="whitespace-pre-wrap text-xs text-foreground/80 leading-5">{meeting.agenda}</p>
                 </div>
               )}
-              {meeting.meetingLink && (
-                <a
-                  href={meeting.meetingLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  className="h-7 gap-1.5 bg-emerald-600 px-2.5 text-[11px] text-white hover:bg-emerald-700"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onJoinSmartMeet(meeting);
+                  }}
                 >
-                  <ExternalLink className="size-3" />
-                  Join meeting
-                </a>
-              )}
+                  <Video className="size-3" />
+                  Join Smart Meet
+                </Button>
+                {canManage && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 px-2.5 text-[11px]"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onInviteGuest(meeting);
+                    }}
+                  >
+                    <UserPlus className="size-3" />
+                    Invite guest
+                  </Button>
+                )}
+                {meeting.meetingLink && (
+                  <a
+                    href={meeting.meetingLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+                  >
+                    <ExternalLink className="size-3" />
+                    External link
+                  </a>
+                )}
+              </div>
               {canManage && (
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Button
@@ -674,6 +711,9 @@ export default function MeetingsPage() {
   const [selectedAttendees, setSelectedAttendees] = useState<string[]>([]);
   const [linkedTaskIds, setLinkedTaskIds] = useState<string[]>([]);
   const [editingMeeting, setEditingMeeting] = useState<Meeting | null>(null);
+  const [joinMeetTarget, setJoinMeetTarget] = useState<Meeting | null>(null);
+  const [guestInviteTarget, setGuestInviteTarget] = useState<Meeting | null>(null);
+  const [meetUser, setMeetUser] = useState<{ name?: string; email?: string }>({});
   const [form, setForm] = useState({
     title: "",
     description: "",
@@ -763,6 +803,10 @@ export default function MeetingsPage() {
 
   useEffect(() => {
     setCurrentUserId(readCookie("user_id"));
+    setMeetUser({
+      name: readCookie("user_name") ?? readCookie("user_email") ?? undefined,
+      email: readCookie("user_email") ?? undefined,
+    });
   }, []);
 
   useEffect(() => {
@@ -1312,6 +1356,28 @@ export default function MeetingsPage() {
 
                 <CardContent>
                   <form onSubmit={handleCreateMeeting} className="space-y-4">
+                    <div className="flex justify-end">
+                      <TemplatePicker
+                        type="meeting"
+                        teamId={selectedTeamId ?? undefined}
+                        currentUserId={currentUserId}
+                        onApply={(t) => {
+                          const p = t.payload as {
+                            title?: string;
+                            description?: string;
+                            agenda?: string;
+                            meetingLink?: string;
+                          };
+                          setForm((f) => ({
+                            ...f,
+                            title: p.title ?? f.title,
+                            description: p.description ?? f.description,
+                            agenda: p.agenda ?? f.agenda,
+                            meetingLink: p.meetingLink ?? f.meetingLink,
+                          }));
+                        }}
+                      />
+                    </div>
                     {/* Title */}
                     <div className="space-y-1.5">
                       <Label htmlFor="mtg-title" className="text-xs font-medium">Title *</Label>
@@ -1488,6 +1554,22 @@ export default function MeetingsPage() {
                       </div>
                     )}
 
+                    {form.title.trim() && (
+                      <div className="flex justify-start">
+                        <SaveAsTemplate
+                          type="meeting"
+                          teamId={selectedTeamId ?? undefined}
+                          suggestedName={form.title.slice(0, 60)}
+                          payload={{
+                            title: form.title,
+                            description: form.description,
+                            agenda: form.agenda,
+                            meetingLink: form.meetingLink,
+                          }}
+                        />
+                      </div>
+                    )}
+
                     <Button
                       type="submit"
                       className="w-full gap-2"
@@ -1544,6 +1626,8 @@ export default function MeetingsPage() {
                       canManage={currentUserId === meeting.createdBy}
                       onEdit={setEditingMeeting}
                       onCancel={(nextMeeting) => void handleCancelMeeting(nextMeeting)}
+                      onJoinSmartMeet={(m) => setJoinMeetTarget(m)}
+                      onInviteGuest={(m) => setGuestInviteTarget(m)}
                     />
                   ))
                 ) : (
@@ -1619,6 +1703,25 @@ export default function MeetingsPage() {
         }}
         onSave={(payload) => void handleSaveMeeting(payload)}
       />
+
+      {joinMeetTarget && (
+        <JitsiEmbed
+          meetingId={joinMeetTarget.meetingId}
+          meetingTitle={joinMeetTarget.title}
+          displayName={meetUser.name}
+          email={meetUser.email}
+          onClose={() => setJoinMeetTarget(null)}
+        />
+      )}
+
+      {guestInviteTarget && (
+        <GuestInviteModal
+          scope="meeting"
+          scopeId={guestInviteTarget.meetingId}
+          label={guestInviteTarget.title}
+          onClose={() => setGuestInviteTarget(null)}
+        />
+      )}
     </motion.div>
   );
 }

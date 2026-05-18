@@ -42,6 +42,8 @@ import {
 } from "@/lib/api";
 import { useTeam } from "@/hooks/use-team";
 import { TeamPageGuard } from "@/components/team-page-guard";
+import { FilePreviewModal } from "@/components/files/FilePreviewModal";
+import { ShareLinkModal } from "@/components/files/ShareLinkModal";
 
 function looksLikeOpaqueUserId(value?: string | null) {
   if (!value) return false;
@@ -276,11 +278,15 @@ function FilesTable({
   taskNamesById,
   uploaderNamesById,
   onDelete,
+  onPreview,
+  onShare,
 }: {
   files: FileRecord[];
   taskNamesById: Record<string, string>;
   uploaderNamesById: Record<string, string>;
   onDelete: (file: FileRecord) => void;
+  onPreview: (file: FileRecord) => void;
+  onShare: (file: FileRecord) => void;
 }) {
   return (
     <Card className="border-border/60">
@@ -325,7 +331,13 @@ function FilesTable({
                         <FileIcon type={file.fileType} />
                       </div>
                       <div className="min-w-0">
-                        <p className="max-w-48 truncate text-sm font-medium">{file.fileName}</p>
+                        <button
+                          type="button"
+                          onClick={() => onPreview(file)}
+                          className="max-w-48 truncate text-left text-sm font-medium hover:text-indigo-600 hover:underline"
+                        >
+                          {file.fileName}
+                        </button>
                         <div className="mt-0.5 flex items-center gap-1.5">
                           <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
                             {extensionBadge(file.fileName)}
@@ -368,6 +380,15 @@ function FilesTable({
                   </td>
                   <td className="py-3 pl-2 pr-4">
                     <div className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 cursor-pointer"
+                        title="Share link"
+                        onClick={() => onShare(file)}
+                      >
+                        <Link2 className="size-3.5 text-muted-foreground" />
+                      </Button>
                       <a
                         download={file.fileName}
                         href={`/api/proxy/files/${file.fileId}/download`}
@@ -408,6 +429,8 @@ export default function FilesPage() {
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<FileTypeFilter>("ALL");
   const [sortMode, setSortMode] = useState<SortMode>("RECENT");
+  const [previewTarget, setPreviewTarget] = useState<FileRecord | null>(null);
+  const [shareTarget, setShareTarget] = useState<FileRecord | null>(null);
 
   const loadFiles = useCallback(async () => {
     if (!selectedTeamId) return;
@@ -642,6 +665,8 @@ export default function FilesPage() {
                   taskNamesById={taskNamesById}
                   uploaderNamesById={uploaderNamesById}
                   onDelete={setDeleteTarget}
+                  onPreview={setPreviewTarget}
+                  onShare={setShareTarget}
                 />
               </div>
             ) : null}
@@ -659,6 +684,8 @@ export default function FilesPage() {
                   taskNamesById={taskNamesById}
                   uploaderNamesById={uploaderNamesById}
                   onDelete={setDeleteTarget}
+                  onPreview={setPreviewTarget}
+                  onShare={setShareTarget}
                 />
               </div>
             ) : null}
@@ -704,6 +731,23 @@ export default function FilesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {previewTarget && (
+        <FilePreviewModal
+          file={previewTarget}
+          onClose={() => setPreviewTarget(null)}
+          onOpenShare={() => {
+            setShareTarget(previewTarget);
+            setPreviewTarget(null);
+          }}
+        />
+      )}
+      {shareTarget && (
+        <ShareLinkModal
+          file={shareTarget}
+          onClose={() => setShareTarget(null)}
+        />
+      )}
     </motion.div>
   );
 }

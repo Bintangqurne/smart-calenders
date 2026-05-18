@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { getGoogleStatus, disconnectGoogle, type GoogleStatus } from "@/lib/api";
+import { ProfileSettings } from "@/components/profile/ProfileSettings";
 
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "1012900320741-thgtlgjq2u0u16ve84run8vvt4rcnl2d.apps.googleusercontent.com";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || (typeof window !== "undefined" ? window.location.origin : "http://localhost:3000");
@@ -175,6 +176,10 @@ export default function SettingsPage() {
 
           </CardContent>
         </Card>
+      </motion.div>
+
+      <motion.div variants={item}>
+        <ProfileSettings />
       </motion.div>
     </motion.div>
   );
