@@ -84,6 +84,12 @@ export default async function LoginPage({
               </svg>
               Continue with Google
             </Link>
+            <p className="text-center text-[11px] text-muted-foreground">
+              By signing in you agree to our{" "}
+              <Link href="/privacy" className="underline hover:text-foreground">
+                Privacy Policy
+              </Link>
+            </p>
           </div>
         </div>
       </div>
