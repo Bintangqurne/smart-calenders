@@ -216,6 +216,16 @@ export function ChatDock() {
     [selectedTeam]
   );
 
+  const membersByUserId = useMemo(
+    () => Object.fromEntries(teamMembers.map((m) => [m.userId, m])),
+    [teamMembers]
+  );
+
+  const getSenderDisplay = useCallback(
+    (userId: string) => membersByUserId[userId]?.name ?? "Member",
+    [membersByUserId]
+  );
+
   const totalUnread = useMemo(
     () => conversations.reduce((s, c) => s + (c.unreadCount ?? 0), 0),
     [conversations]
@@ -543,7 +553,13 @@ export function ChatDock() {
                         }`}
                       >
                         <div className="flex items-center justify-between gap-1">
-                          <span className="truncate">{previewLabel(c)}</span>
+                          <span className="truncate">
+                            {c.type === "dm"
+                              ? getSenderDisplay(
+                                  (c.memberIds ?? []).find((id) => id !== myUserId) ?? ""
+                                )
+                              : previewLabel(c)}
+                          </span>
                           {unread > 0 && (
                             <span className="rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white">
                               {unread > 99 ? "99+" : unread}
@@ -583,7 +599,7 @@ export function ChatDock() {
                           return (
                             <div key={m.messageId} className="group flex flex-col">
                               <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-slate-500">
-                                <span>{mine ? "You" : m.senderId}</span>
+                                <span>{mine ? "You" : getSenderDisplay(m.senderId)}</span>
                                 <span>·</span>
                                 <span>{fmtTime(m.createdAt)}</span>
                                 {m.editedAt && !m.deletedAt && (
