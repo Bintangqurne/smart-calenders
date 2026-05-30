@@ -454,6 +454,14 @@ export function deleteFile(fileId: string): Promise<void> {
   return apiFetch<void>(`/files/${fileId}`, { method: "DELETE" });
 }
 
+/** Rename a file (updates the display name only, not the S3 object). */
+export function renameFile(fileId: string, fileName: string): Promise<FileRecord> {
+  return apiFetch<FileRecord>(`/files/${fileId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ fileName }),
+  });
+}
+
 /** Request a presigned S3 upload URL from the backend. */
 export function getUploadUrl(params: {
   teamId: string;

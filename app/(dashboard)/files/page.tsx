@@ -14,6 +14,7 @@ import {
   Filter,
   Link2,
   Loader2,
+  Pencil,
   Search,
   Trash2,
   Upload,
@@ -33,6 +34,7 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   deleteFile,
+  renameFile,
   getFiles,
   getTasks,
   getUploadUrl,
@@ -280,6 +282,7 @@ function FilesTable({
   onDelete,
   onPreview,
   onShare,
+  onRename,
 }: {
   files: FileRecord[];
   taskNamesById: Record<string, string>;
@@ -287,6 +290,7 @@ function FilesTable({
   onDelete: (file: FileRecord) => void;
   onPreview: (file: FileRecord) => void;
   onShare: (file: FileRecord) => void;
+  onRename: (file: FileRecord) => void;
 }) {
   return (
     <Card className="border-border/60">
@@ -389,6 +393,15 @@ function FilesTable({
                       >
                         <Link2 className="size-3.5 text-muted-foreground" />
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 cursor-pointer"
+                        title="Rename"
+                        onClick={() => onRename(file)}
+                      >
+                        <Pencil className="size-3.5 text-muted-foreground" />
+                      </Button>
                       <a
                         download={file.fileName}
                         href={`/api/proxy/files/${file.fileId}/download`}
@@ -431,6 +444,9 @@ export default function FilesPage() {
   const [sortMode, setSortMode] = useState<SortMode>("RECENT");
   const [previewTarget, setPreviewTarget] = useState<FileRecord | null>(null);
   const [shareTarget, setShareTarget] = useState<FileRecord | null>(null);
+  const [renameTarget, setRenameTarget] = useState<FileRecord | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renaming, setRenaming] = useState(false);
 
   const loadFiles = useCallback(async () => {
     if (!selectedTeamId) return;
@@ -476,6 +492,36 @@ export default function FilesPage() {
     } finally {
       setDeleting(false);
       setDeleteTarget(null);
+    }
+  }
+
+  function openRename(file: FileRecord) {
+    setRenameTarget(file);
+    setRenameValue(file.fileName);
+  }
+
+  async function handleRename() {
+    if (!renameTarget) return;
+    const nextName = renameValue.trim();
+    if (!nextName || nextName === renameTarget.fileName) {
+      setRenameTarget(null);
+      return;
+    }
+    setRenaming(true);
+    try {
+      const updated = await renameFile(renameTarget.fileId, nextName);
+      setFiles((prev) =>
+        prev.map((entry) =>
+          entry.fileId === renameTarget.fileId
+            ? { ...entry, fileName: updated.fileName }
+            : entry
+        )
+      );
+      setRenameTarget(null);
+    } catch {
+      // silent for now
+    } finally {
+      setRenaming(false);
     }
   }
 
@@ -667,6 +713,7 @@ export default function FilesPage() {
                   onDelete={setDeleteTarget}
                   onPreview={setPreviewTarget}
                   onShare={setShareTarget}
+                  onRename={openRename}
                 />
               </div>
             ) : null}
@@ -686,6 +733,7 @@ export default function FilesPage() {
                   onDelete={setDeleteTarget}
                   onPreview={setPreviewTarget}
                   onShare={setShareTarget}
+                  onRename={openRename}
                 />
               </div>
             ) : null}
@@ -694,7 +742,7 @@ export default function FilesPage() {
       </TeamPageGuard>
 
       <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Upload files</DialogTitle>
           </DialogHeader>
@@ -705,6 +753,38 @@ export default function FilesPage() {
               void loadFiles();
             }}
           />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!renameTarget} onOpenChange={(open) => !open && setRenameTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename file</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={renameValue}
+            onChange={(event) => setRenameValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void handleRename();
+              }
+            }}
+            placeholder="File name"
+            autoFocus
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <DialogClose render={<Button variant="outline" type="button" />}>Cancel</DialogClose>
+            <Button
+              type="button"
+              disabled={renaming || !renameValue.trim()}
+              onClick={() => void handleRename()}
+              className="gap-2"
+            >
+              {renaming ? <Loader2 className="size-4 animate-spin" /> : null}
+              Save
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

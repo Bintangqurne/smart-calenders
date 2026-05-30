@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Send, Loader2, MessageSquare } from "lucide-react";
 import {
   getOrCreateThread,
@@ -11,6 +11,7 @@ import {
 } from "@/lib/api";
 import { ulid } from "@/lib/ulid";
 import { useRealtime } from "@/contexts/realtime-context";
+import { useTeam } from "@/hooks/use-team";
 
 function fmtTime(iso: string): string {
   try {
@@ -37,7 +38,21 @@ interface Props {
 
 export function FileCommentsPanel({ fileId }: Props) {
   const { client } = useRealtime();
+  const { selectedTeam } = useTeam();
   const myUserId = readMyUserId();
+
+  const membersByUserId = useMemo(
+    () =>
+      Object.fromEntries(
+        (selectedTeam?.memberDetails ?? []).map((m) => [m.userId, m])
+      ),
+    [selectedTeam]
+  );
+
+  const getSenderDisplay = useCallback(
+    (userId: string) => membersByUserId[userId]?.name ?? "Member",
+    [membersByUserId]
+  );
   const [conv, setConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,7 +162,7 @@ export function FileCommentsPanel({ fileId }: Props) {
                 className={`flex flex-col ${mine ? "items-end" : "items-start"}`}
               >
                 <div className="mb-0.5 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-slate-500">
-                  <span>{m.senderId}</span>
+                  <span>{mine ? "You" : getSenderDisplay(m.senderId)}</span>
                   <span>·</span>
                   <span>{fmtTime(m.createdAt)}</span>
                 </div>
