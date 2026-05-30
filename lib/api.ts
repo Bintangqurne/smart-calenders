@@ -750,6 +750,7 @@ export interface FileVersion {
 
 export interface FilePreviewInfo {
   previewUrl: string;
+  downloadUrl: string;
   fileName: string;
   fileType: string;
   fileSize: number;
@@ -767,6 +768,16 @@ export interface FileShareInfo {
 
 export function getFilePreviewUrl(fileId: string): Promise<FilePreviewInfo> {
   return apiFetch<FilePreviewInfo>(`/files/${fileId}/preview`);
+}
+
+export interface FileDownloadInfo {
+  downloadUrl: string;
+  fileName: string;
+  expiresIn: number;
+}
+
+export function getFileDownloadUrl(fileId: string): Promise<FileDownloadInfo> {
+  return apiFetch<FileDownloadInfo>(`/files/${fileId}/download`);
 }
 
 export function listFileVersions(

@@ -44,6 +44,7 @@ import {
   getFiles,
   getTasks,
   getUploadUrl,
+  getFileDownloadUrl,
   uploadFileToS3,
   listFolders,
   createFolder,
@@ -304,6 +305,7 @@ function FilesTable({
   onShare,
   onRename,
   onMove,
+  onDownload,
 }: {
   files: FileRecord[];
   taskNamesById: Record<string, string>;
@@ -313,6 +315,7 @@ function FilesTable({
   onShare: (file: FileRecord) => void;
   onRename: (file: FileRecord) => void;
   onMove: (file: FileRecord) => void;
+  onDownload: (file: FileRecord) => void;
 }) {
   return (
     <Card className="border-border/60">
@@ -433,14 +436,15 @@ function FilesTable({
                       >
                         <FolderInput className="size-3.5 text-muted-foreground" />
                       </Button>
-                      <a
-                        download={file.fileName}
-                        href={`/api/proxy/files/${file.fileId}/download`}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 cursor-pointer"
                         title="Download"
-                        className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-muted"
+                        onClick={() => onDownload(file)}
                       >
                         <Download className="size-3.5 text-muted-foreground" />
-                      </a>
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -573,6 +577,22 @@ export default function FilesPage() {
       // silent for now
     } finally {
       setRenaming(false);
+    }
+  }
+
+  async function handleDownload(file: FileRecord) {
+    try {
+      // Backend memberi presigned URL ber-disposition `attachment`,
+      // jadi browser langsung mengunduh (bukan membuka di tab).
+      const { downloadUrl } = await getFileDownloadUrl(file.fileId);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = file.fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch {
+      // silent for now
     }
   }
 
@@ -959,6 +979,7 @@ export default function FilesPage() {
                   onShare={setShareTarget}
                   onRename={openRename}
                   onMove={setMoveTarget}
+                  onDownload={handleDownload}
                 />
               </div>
             ) : null}
@@ -980,6 +1001,7 @@ export default function FilesPage() {
                   onShare={setShareTarget}
                   onRename={openRename}
                   onMove={setMoveTarget}
+                  onDownload={handleDownload}
                 />
               </div>
             ) : null}

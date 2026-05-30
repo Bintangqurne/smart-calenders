@@ -104,9 +104,8 @@ export function FilePreviewModal({
             </button>
             {info && (
               <a
-                href={info.previewUrl}
-                target="_blank"
-                rel="noreferrer"
+                href={info.downloadUrl}
+                download={info.fileName}
                 className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <Download className="h-3.5 w-3.5" />
