@@ -12,6 +12,11 @@ import {
   FileText,
   FileVideo,
   Filter,
+  ChevronRight,
+  Folder as FolderIcon2,
+  FolderInput,
+  FolderPlus,
+  Home,
   Link2,
   Loader2,
   Pencil,
@@ -35,11 +40,17 @@ import { Input } from "@/components/ui/input";
 import {
   deleteFile,
   renameFile,
+  moveFile,
   getFiles,
   getTasks,
   getUploadUrl,
   uploadFileToS3,
+  listFolders,
+  createFolder,
+  renameFolder,
+  deleteFolder,
   type FileRecord,
+  type Folder,
   type Task,
 } from "@/lib/api";
 import { useTeam } from "@/hooks/use-team";
@@ -124,7 +135,15 @@ interface UploadItem {
   error?: string;
 }
 
-function UploadZone({ teamId, onDone }: { teamId: string; onDone: () => void }) {
+function UploadZone({
+  teamId,
+  folderId,
+  onDone,
+}: {
+  teamId: string;
+  folderId: string | null;
+  onDone: () => void;
+}) {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -159,6 +178,7 @@ function UploadZone({ teamId, onDone }: { teamId: string; onDone: () => void }) 
           fileName: item.file.name,
           fileType: item.file.type || "application/octet-stream",
           fileSize: item.file.size,
+          folderId,
         });
 
         await uploadFileToS3(uploadUrl, item.file);
@@ -283,6 +303,7 @@ function FilesTable({
   onPreview,
   onShare,
   onRename,
+  onMove,
 }: {
   files: FileRecord[];
   taskNamesById: Record<string, string>;
@@ -291,6 +312,7 @@ function FilesTable({
   onPreview: (file: FileRecord) => void;
   onShare: (file: FileRecord) => void;
   onRename: (file: FileRecord) => void;
+  onMove: (file: FileRecord) => void;
 }) {
   return (
     <Card className="border-border/60">
@@ -402,6 +424,15 @@ function FilesTable({
                       >
                         <Pencil className="size-3.5 text-muted-foreground" />
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 cursor-pointer"
+                        title="Move to folder"
+                        onClick={() => onMove(file)}
+                      >
+                        <FolderInput className="size-3.5 text-muted-foreground" />
+                      </Button>
                       <a
                         download={file.fileName}
                         href={`/api/proxy/files/${file.fileId}/download`}
@@ -448,14 +479,32 @@ export default function FilesPage() {
   const [renameValue, setRenameValue] = useState("");
   const [renaming, setRenaming] = useState(false);
 
+  // ── Folders ──
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [folderRenameTarget, setFolderRenameTarget] = useState<Folder | null>(null);
+  const [folderRenameValue, setFolderRenameValue] = useState("");
+  const [folderDeleteTarget, setFolderDeleteTarget] = useState<Folder | null>(null);
+  const [folderError, setFolderError] = useState<string | null>(null);
+  const [moveTarget, setMoveTarget] = useState<FileRecord | null>(null);
+
   const loadFiles = useCallback(async () => {
     if (!selectedTeamId) return;
 
     setLoading(true);
     try {
-      setFiles(await getFiles({ teamId: selectedTeamId }));
+      const [filesRes, foldersRes] = await Promise.allSettled([
+        getFiles({ teamId: selectedTeamId }),
+        listFolders(selectedTeamId),
+      ]);
+      setFiles(filesRes.status === "fulfilled" ? filesRes.value : []);
+      setFolders(foldersRes.status === "fulfilled" ? foldersRes.value : []);
     } catch {
       setFiles([]);
+      setFolders([]);
     } finally {
       setLoading(false);
     }
@@ -464,9 +513,11 @@ export default function FilesPage() {
   useEffect(() => {
     if (!selectedTeamId) {
       setFiles([]);
+      setFolders([]);
       return;
     }
 
+    setCurrentFolderId(null);
     void loadFiles();
   }, [loadFiles, selectedTeamId]);
 
@@ -525,6 +576,94 @@ export default function FilesPage() {
     }
   }
 
+  async function handleCreateFolder() {
+    if (!selectedTeamId) return;
+    const name = newFolderName.trim();
+    if (!name) return;
+    setCreatingFolder(true);
+    try {
+      const folder = await createFolder({
+        teamId: selectedTeamId,
+        name,
+        parentFolderId: currentFolderId,
+      });
+      setFolders((prev) => [...prev, folder]);
+      setNewFolderOpen(false);
+      setNewFolderName("");
+    } catch {
+      // silent for now
+    } finally {
+      setCreatingFolder(false);
+    }
+  }
+
+  function openFolderRename(folder: Folder) {
+    setFolderRenameTarget(folder);
+    setFolderRenameValue(folder.name);
+  }
+
+  async function handleFolderRename() {
+    if (!folderRenameTarget) return;
+    const name = folderRenameValue.trim();
+    if (!name || name === folderRenameTarget.name) {
+      setFolderRenameTarget(null);
+      return;
+    }
+    try {
+      const updated = await renameFolder(folderRenameTarget.folderId, name);
+      setFolders((prev) =>
+        prev.map((f) => (f.folderId === updated.folderId ? { ...f, name: updated.name } : f))
+      );
+      setFolderRenameTarget(null);
+    } catch {
+      // silent for now
+    }
+  }
+
+  async function handleFolderDelete() {
+    if (!folderDeleteTarget) return;
+    setFolderError(null);
+    try {
+      await deleteFolder(folderDeleteTarget.folderId);
+      setFolders((prev) => prev.filter((f) => f.folderId !== folderDeleteTarget.folderId));
+      setFolderDeleteTarget(null);
+    } catch (err) {
+      setFolderError(err instanceof Error ? err.message : "Failed to delete folder");
+    }
+  }
+
+  async function handleMoveFile(folderId: string | null) {
+    if (!moveTarget) return;
+    try {
+      await moveFile(moveTarget.fileId, folderId);
+      setFiles((prev) =>
+        prev.map((entry) =>
+          entry.fileId === moveTarget.fileId ? { ...entry, folderId } : entry
+        )
+      );
+      setMoveTarget(null);
+    } catch {
+      // silent for now
+    }
+  }
+
+  const subfolders = folders.filter(
+    (f) => (f.parentFolderId ?? null) === currentFolderId
+  );
+
+  const breadcrumb = useMemo(() => {
+    const trail: Folder[] = [];
+    let cursor = currentFolderId;
+    const byId = new Map(folders.map((f) => [f.folderId, f]));
+    while (cursor) {
+      const f = byId.get(cursor);
+      if (!f) break;
+      trail.unshift(f);
+      cursor = f.parentFolderId ?? null;
+    }
+    return trail;
+  }, [folders, currentFolderId]);
+
   const totalSize = files.reduce((sum, file) => sum + file.fileSize, 0);
   const imageCount = files.filter((file) => file.fileType.startsWith("image/")).length;
   const linkedCount = files.filter((file) => Boolean(file.taskId)).length;
@@ -545,6 +684,7 @@ export default function FilesPage() {
 
   const filteredFiles = useMemo(() => {
     return [...files]
+      .filter((file) => (file.folderId ?? null) === currentFolderId)
       .filter((file) => {
         const matchesSearch =
           file.fileName.toLowerCase().includes(search.toLowerCase()) ||
@@ -557,7 +697,7 @@ export default function FilesPage() {
         return matchesSearch && matchesType;
       })
       .sort((a, b) => compareFiles(a, b, sortMode));
-  }, [files, search, sortMode, taskNamesById, typeFilter]);
+  }, [files, currentFolderId, search, sortMode, taskNamesById, typeFilter]);
 
   const linkedFiles = filteredFiles.filter((file) => file.taskId);
   const generalFiles = filteredFiles.filter((file) => !file.taskId);
@@ -571,10 +711,24 @@ export default function FilesPage() {
             {selectedTeam ? `Shared files for ${selectedTeam.name}` : "Select a team to view files"}
           </p>
         </div>
-        <Button className="gap-2" disabled={!selectedTeamId} onClick={() => setUploadOpen(true)}>
-          <Upload className="size-4" />
-          Upload files
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="gap-2"
+            disabled={!selectedTeamId}
+            onClick={() => {
+              setNewFolderName("");
+              setNewFolderOpen(true);
+            }}
+          >
+            <FolderPlus className="size-4" />
+            New folder
+          </Button>
+          <Button className="gap-2" disabled={!selectedTeamId} onClick={() => setUploadOpen(true)}>
+            <Upload className="size-4" />
+            Upload files
+          </Button>
+        </div>
       </div>
 
       <TeamPageGuard
@@ -583,6 +737,82 @@ export default function FilesPage() {
         emptyHeading="No team selected"
         emptyDescription="Choose a team from the sidebar to load shared files."
       >
+        {/* Breadcrumb */}
+        <div className="flex flex-wrap items-center gap-1 text-sm">
+          <button
+            type="button"
+            onClick={() => setCurrentFolderId(null)}
+            className={`inline-flex items-center gap-1 rounded-md px-2 py-1 transition-colors hover:bg-muted ${
+              currentFolderId === null ? "font-semibold text-foreground" : "text-muted-foreground"
+            }`}
+          >
+            <Home className="size-3.5" />
+            Files
+          </button>
+          {breadcrumb.map((folder) => (
+            <span key={folder.folderId} className="inline-flex items-center gap-1">
+              <ChevronRight className="size-3.5 text-muted-foreground/60" />
+              <button
+                type="button"
+                onClick={() => setCurrentFolderId(folder.folderId)}
+                className={`rounded-md px-2 py-1 transition-colors hover:bg-muted ${
+                  currentFolderId === folder.folderId
+                    ? "font-semibold text-foreground"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {folder.name}
+              </button>
+            </span>
+          ))}
+        </div>
+
+        {/* Folders grid */}
+        {subfolders.length > 0 ? (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {subfolders.map((folder) => (
+              <div
+                key={folder.folderId}
+                className="group flex items-center gap-3 rounded-2xl border border-border/60 p-3 transition-colors hover:border-primary/30 hover:bg-muted/30"
+              >
+                <button
+                  type="button"
+                  onClick={() => setCurrentFolderId(folder.folderId)}
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                >
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500">
+                    <FolderIcon2 className="size-4" />
+                  </div>
+                  <span className="truncate text-sm font-medium">{folder.name}</span>
+                </button>
+                <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8"
+                    title="Rename folder"
+                    onClick={() => openFolderRename(folder)}
+                  >
+                    <Pencil className="size-3.5 text-muted-foreground" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+                    title="Delete folder"
+                    onClick={() => {
+                      setFolderError(null);
+                      setFolderDeleteTarget(folder);
+                    }}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         {files.length > 0 ? (
           <div className="flex flex-wrap gap-3">
             <div className="flex items-center gap-2 rounded-xl border border-border/50 px-3 py-2 text-sm">
@@ -668,7 +898,7 @@ export default function FilesPage() {
           </div>
         ) : null}
 
-        {files.length === 0 ? (
+        {files.length === 0 && folders.length === 0 ? (
           <Card className="border-dashed">
             <CardContent className="flex flex-col items-center justify-center py-16">
               <div className="mb-4 rounded-full bg-primary/10 p-4 text-primary">
@@ -676,7 +906,7 @@ export default function FilesPage() {
               </div>
               <h3 className="text-lg font-semibold">No files yet</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Upload files to share them with your team.
+                Upload files or create a folder to organize your team's work.
               </p>
               <Button className="mt-4 gap-2" onClick={() => setUploadOpen(true)}>
                 <Upload className="size-4" />
@@ -685,17 +915,31 @@ export default function FilesPage() {
             </CardContent>
           </Card>
         ) : filteredFiles.length === 0 ? (
-          <Card className="border-dashed">
-            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="mb-4 rounded-full bg-muted p-4 text-muted-foreground">
-                <Search className="size-8" />
-              </div>
-              <h3 className="text-lg font-semibold">No files match this view</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Try changing the search, type filter, or sort order.
-              </p>
-            </CardContent>
-          </Card>
+          subfolders.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="mb-4 rounded-full bg-muted p-4 text-muted-foreground">
+                  {search || typeFilter !== "ALL" ? (
+                    <Search className="size-8" />
+                  ) : (
+                    <FolderIcon2 className="size-8" />
+                  )}
+                </div>
+                <h3 className="text-lg font-semibold">
+                  {search || typeFilter !== "ALL"
+                    ? "No files match this view"
+                    : currentFolderId
+                    ? "This folder is empty"
+                    : "No files here yet"}
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {search || typeFilter !== "ALL"
+                    ? "Try changing the search, type filter, or sort order."
+                    : "Upload files into this folder, or create a subfolder."}
+                </p>
+              </CardContent>
+            </Card>
+          ) : null
         ) : (
           <div className="space-y-5">
             {linkedFiles.length > 0 ? (
@@ -714,6 +958,7 @@ export default function FilesPage() {
                   onPreview={setPreviewTarget}
                   onShare={setShareTarget}
                   onRename={openRename}
+                  onMove={setMoveTarget}
                 />
               </div>
             ) : null}
@@ -734,6 +979,7 @@ export default function FilesPage() {
                   onPreview={setPreviewTarget}
                   onShare={setShareTarget}
                   onRename={openRename}
+                  onMove={setMoveTarget}
                 />
               </div>
             ) : null}
@@ -748,11 +994,140 @@ export default function FilesPage() {
           </DialogHeader>
           <UploadZone
             teamId={selectedTeamId ?? ""}
+            folderId={currentFolderId}
             onDone={() => {
               setUploadOpen(false);
               void loadFiles();
             }}
           />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={newFolderOpen} onOpenChange={setNewFolderOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              New folder{breadcrumb.length > 0 ? ` in "${breadcrumb[breadcrumb.length - 1].name}"` : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <Input
+            value={newFolderName}
+            onChange={(event) => setNewFolderName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void handleCreateFolder();
+              }
+            }}
+            placeholder="Folder name"
+            autoFocus
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <DialogClose render={<Button variant="outline" type="button" />}>Cancel</DialogClose>
+            <Button
+              type="button"
+              disabled={creatingFolder || !newFolderName.trim()}
+              onClick={() => void handleCreateFolder()}
+              className="gap-2"
+            >
+              {creatingFolder ? <Loader2 className="size-4 animate-spin" /> : null}
+              Create
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!folderRenameTarget}
+        onOpenChange={(open) => !open && setFolderRenameTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename folder</DialogTitle>
+          </DialogHeader>
+          <Input
+            value={folderRenameValue}
+            onChange={(event) => setFolderRenameValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void handleFolderRename();
+              }
+            }}
+            placeholder="Folder name"
+            autoFocus
+          />
+          <div className="flex justify-end gap-2 pt-2">
+            <DialogClose render={<Button variant="outline" type="button" />}>Cancel</DialogClose>
+            <Button
+              type="button"
+              disabled={!folderRenameValue.trim()}
+              onClick={() => void handleFolderRename()}
+            >
+              Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!folderDeleteTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setFolderDeleteTarget(null);
+            setFolderError(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete folder?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            <span className="font-semibold text-foreground">{folderDeleteTarget?.name}</span> will be
+            deleted. The folder must be empty first.
+          </p>
+          {folderError ? (
+            <p className="text-sm text-rose-600">{folderError}</p>
+          ) : null}
+          <div className="flex justify-end gap-2 pt-2">
+            <DialogClose render={<Button variant="outline" type="button" />}>Cancel</DialogClose>
+            <Button variant="destructive" type="button" onClick={() => void handleFolderDelete()}>
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!moveTarget} onOpenChange={(open) => !open && setMoveTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Move file</DialogTitle>
+          </DialogHeader>
+          <p className="truncate text-sm text-muted-foreground">{moveTarget?.fileName}</p>
+          <div className="max-h-72 space-y-1 overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => void handleMoveFile(null)}
+              disabled={(moveTarget?.folderId ?? null) === null}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-muted disabled:opacity-40"
+            >
+              <Home className="size-4 text-muted-foreground" />
+              Files (root)
+            </button>
+            {folders.map((folder) => (
+              <button
+                key={folder.folderId}
+                type="button"
+                onClick={() => void handleMoveFile(folder.folderId)}
+                disabled={(moveTarget?.folderId ?? null) === folder.folderId}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-muted disabled:opacity-40"
+              >
+                <FolderIcon2 className="size-4 text-amber-500" />
+                {folder.name}
+              </button>
+            ))}
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -90,6 +90,16 @@ export interface FileRecord {
   s3Key: string;
   version: number;
   createdAt: string;
+  folderId?: string | null;
+}
+
+export interface Folder {
+  folderId: string;
+  teamId: string;
+  name: string;
+  parentFolderId: string | null;
+  createdBy: string;
+  createdAt: string;
 }
 
 export interface LeaderboardEntry {
@@ -462,6 +472,44 @@ export function renameFile(fileId: string, fileName: string): Promise<FileRecord
   });
 }
 
+/** Move a file into a folder (null = team root). */
+export function moveFile(fileId: string, folderId: string | null): Promise<FileRecord> {
+  return apiFetch<FileRecord>(`/files/${fileId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ folderId }),
+  });
+}
+
+// ─── Folders ───────────────────────────────────────────────────
+
+export function listFolders(teamId: string): Promise<Folder[]> {
+  return apiFetch<Folder[]>(`/folders?teamId=${encodeURIComponent(teamId)}`);
+}
+
+export function createFolder(params: {
+  teamId: string;
+  name: string;
+  parentFolderId?: string | null;
+}): Promise<Folder> {
+  return apiFetch<Folder>("/folders", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export function renameFolder(folderId: string, name: string): Promise<Folder> {
+  return apiFetch<Folder>(`/folders/${folderId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function deleteFolder(folderId: string): Promise<{ folderId: string; deleted: boolean }> {
+  return apiFetch<{ folderId: string; deleted: boolean }>(`/folders/${folderId}`, {
+    method: "DELETE",
+  });
+}
+
 /** Request a presigned S3 upload URL from the backend. */
 export function getUploadUrl(params: {
   teamId: string;
@@ -469,6 +517,7 @@ export function getUploadUrl(params: {
   fileType: string;
   fileSize: number;
   taskId?: string;
+  folderId?: string | null;
 }): Promise<{ uploadUrl: string; fileId: string; s3Key: string }> {
   return apiFetch<{ uploadUrl: string; fileId: string; s3Key: string }>("/files/presigned-url", {
     method: "POST",
