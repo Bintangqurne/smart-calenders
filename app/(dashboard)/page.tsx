@@ -232,8 +232,9 @@ export default function DashboardPage() {
   }, [selectedTeamId]);
 
   const upcomingMeetings = useMemo(() =>
-    meetings.filter((m) => new Date(m.startTime) >= new Date())
-      .sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime)).slice(0, 4),
+    [...meetings]
+      .sort((a, b) => +new Date(a.startTime) - +new Date(b.startTime))
+      .slice(0, 4),
     [meetings]);
 
   const upcomingEvents = useMemo(() =>

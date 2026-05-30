@@ -8,7 +8,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { getTeams, type Team } from "@/lib/api";
+import { getTeam, getTeams, type Team } from "@/lib/api";
 
 const TEAM_STORAGE_KEY = "smart-scheduler:selected-team-id";
 
@@ -79,6 +79,15 @@ export function TeamProvider({ children }: { children: ReactNode }) {
     }
 
     window.localStorage.removeItem(TEAM_STORAGE_KEY);
+  }, [selectedTeamId]);
+
+  useEffect(() => {
+    if (!selectedTeamId) return;
+    void getTeam(selectedTeamId).then((enriched) => {
+      setTeams((prev) =>
+        prev.map((t) => (t.teamId === enriched.teamId ? { ...t, ...enriched } : t))
+      );
+    }).catch(() => {});
   }, [selectedTeamId]);
 
   const selectTeam = useCallback((teamId: string) => {
